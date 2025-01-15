@@ -13,6 +13,6 @@
 3. Run the following redis commands:
     - `rpush frontend:9000 http://mb1:2525`
     - `rpush frontend:9000 http://mb2:2525`
-    - `rpush frontend:9001 http://mb1:2526`
+    - `rpush frontend:9001 http://mb1:2525`
 4. Now `curl http://localhost:9000` should randomly go to either mb1 or mb2. And `curl http://localhost:9001` should always go to mb3.
 
