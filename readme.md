@@ -16,3 +16,8 @@
     - `rpush frontend:9001 http://mb1:2525`
 4. Now `curl http://localhost:9000` should randomly go to either mb1 or mb2. And `curl http://localhost:9001` should always go to mb3.
 
+## TODOs
+
+- Benchmarks vs a oob nginx instance
+- Observability
+- Support for HTTPS
