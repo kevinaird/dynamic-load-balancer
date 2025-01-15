@@ -21,3 +21,4 @@
 - Benchmarks vs a oob nginx instance
 - Observability
 - Support for HTTPS
+- Support for TCP
