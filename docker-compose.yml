@@ -1,0 +1,41 @@
+services:
+  redis:
+    image: redis:6.2.3-alpine
+    ports:
+      - 6379:6379
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+    - REDIS_HOSTS=local:redis:6379
+    ports:
+    - "8081:8081"
+    depends_on:
+     - redis
+  nginx:
+    build:
+      context: .
+    volumes:
+      - ./nginx.conf:/nginx.conf
+    ports:
+      - 9000-9009:9000-9009
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+     - redis
+  mb1:
+    image: bbyars/mountebank
+    ports:
+      - 2525:2525
+    command: "--allowInjection"
+  mb2:
+    image: bbyars/mountebank
+    ports:
+      - 2526:2525
+    command: "--allowInjection"
+  mb3:
+    image: bbyars/mountebank
+    ports:
+      - 2527:2525
+    command: "--allowInjection"
