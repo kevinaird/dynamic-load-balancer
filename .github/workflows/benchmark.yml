@@ -34,9 +34,9 @@ jobs:
 
       - name: Deploy mountebank config
         run: |
-          curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-1/imposters -d @${{env.HOME}}/test/imposters.json
-          curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-2/imposters -d @${{env.HOME}}/test/imposters.json
-          curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-3/imposters -d @${{env.HOME}}/test/imposters.json
+          docker run --network host --rm alpine/curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-1/imposters -d @${{env.HOME}}/test/imposters.json
+          docker run --network host --rm alpine/curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-2/imposters -d @${{env.HOME}}/test/imposters.json
+          docker run --network host --rm alpine/curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-3/imposters -d @${{env.HOME}}/test/imposters.json
       
       - name: Run K6 Benchmark for Test 1 @ 25 vus
         uses: addnab/docker-run-action@v3
@@ -151,9 +151,9 @@ jobs:
 
       - name: Deploy mountebank config
         run: |
-          curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-1/imposters -d @${{env.HOME}}/test/imposters.json
-          curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-2/imposters -d @${{env.HOME}}/test/imposters.json
-          curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-3/imposters -d @${{env.HOME}}/test/imposters.json
+          docker run --network host --rm alpine/curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-1/imposters -d @${{env.HOME}}/test/imposters.json
+          docker run --network host --rm alpine/curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-2/imposters -d @${{env.HOME}}/test/imposters.json
+          docker run --network host --rm alpine/curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-3/imposters -d @${{env.HOME}}/test/imposters.json
       
       - name: Run K6 Benchmark for Test 2 @ 25 vus
         uses: addnab/docker-run-action@v3
