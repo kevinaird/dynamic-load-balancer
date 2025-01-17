@@ -29,6 +29,7 @@ jobs:
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
           compose-file: "./test/docker-compose-baseline.yml"
+          compose-flags: "-p dynamic-load-balancer"
           up-flags: "--wait -d"
 
       - name: Deploy mountebank config
@@ -145,6 +146,7 @@ jobs:
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
           compose-file: "./docker-compose.yml"
+          compose-flags: "-p dynamic-load-balancer"
           up-flags: "--wait --build -d"
 
       - name: Deploy mountebank config
