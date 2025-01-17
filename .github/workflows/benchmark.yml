@@ -25,7 +25,11 @@ jobs:
           cat /proc/meminfo
 
       - name: Start up stack
-        run: docker-compose -f ${HOME}/docker-compose.yml -f ${HOME}/test/docker-compose-baseline.yml up -d
+        # run: docker-compose -f ${HOME}/docker-compose.yml -f ${HOME}/test/docker-compose-baseline.yml up -d
+        uses: hoverkraft-tech/compose-action@v2.0.2
+        with:
+          compose-flags: "-f ./docker-compose.yml -f ./test/docker-compose-baseline.yml"
+          up-flags: "--wait --build -d"
 
       - name: Deploy mountebank config
         run: |
@@ -137,7 +141,11 @@ jobs:
           cat /proc/meminfo
           
       - name: Start up stack
-        run: docker-compose -f ${HOME}/docker-compose.yml up --build -d
+        # run: docker-compose -f ${HOME}/docker-compose.yml up --build -d
+        uses: hoverkraft-tech/compose-action@v2.0.2
+        with:
+          compose-flags: "-f ./docker-compose.yml"
+          up-flags: "--wait --build -d"
 
       - name: Deploy mountebank config
         run: |
