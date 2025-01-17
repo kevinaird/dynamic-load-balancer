@@ -28,7 +28,7 @@ jobs:
         # run: docker-compose -f${{ env.HOME }}/docker-compose.yml -f${{ env.HOME }}/test/docker-compose-baseline.yml up -d
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
-          compose-flags: "-f ./test/docker-compose-baseline.yml"
+          compose-file: "./test/docker-compose-baseline.yml"
           up-flags: "--wait -d"
 
       - name: Deploy mountebank config
@@ -144,7 +144,7 @@ jobs:
         # run: docker-compose -f${{ env.HOME }}/docker-compose.yml up --build -d
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
-          compose-flags: "-f ./docker-compose.yml"
+          compose-file: "./docker-compose.yml"
           up-flags: "--wait --build -d"
 
       - name: Deploy mountebank config
