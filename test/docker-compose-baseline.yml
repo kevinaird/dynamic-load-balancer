@@ -35,8 +35,6 @@ services:
       - REDIS_PASSWORD=
     deploy:
       replicas: 3
-    depends_on:
-      - watcher
   
   #############################
   # DEBUG MOUNTEBANK INSTANCES
@@ -58,5 +56,3 @@ services:
       - REDIS_PASSWORD=
     deploy:
       replicas: 1
-    depends_on:
-      - watcher
