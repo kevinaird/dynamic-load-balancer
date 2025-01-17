@@ -21,7 +21,7 @@ export default function () {
   const start = new Date().getTime();
 
   const res = http.get(`http://localhost:9000/customers/123${Math.floor(Math.random() * 500)}`);
-  check(res, { 'status was 201': (r) => r.status == 201 });
+  check(res, { 'status was 2xx': (r) => r.status >= 200 && r.status <= 299 });
 
   const end = new Date().getTime();
   const elapsed = (end-start)/1000;

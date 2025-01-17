@@ -1,7 +1,6 @@
 services:
   nginx:
-    build:
-      context: ./test/nginx
+    image: nginx:latest
     entrypoint: "nginx"
     command: [ "-c","/nginx.conf","-g","daemon off;"]
     volumes:
@@ -15,3 +14,49 @@ services:
     depends_on:
       - mb
       - mb-debug
+
+  ###################################
+  # PERFORMANCE MOUNTEBANK INSTANCES
+  ###################################
+  mb:
+    image: bbyars/mountebank
+    # build:
+      # context: ./mountebank-pool
+    command: "--no-mock --no-recordRequests --loglevel silent --nologfile --allowInjection" # --impostersRepository=/app/config/impostersRepo.js"
+    healthcheck: 
+      test: "wget --no-verbose --tries=1 --spider http://localhost:2525 || exit 1"
+      interval: 5s
+      timeout: 10s
+      retries: 6
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+    deploy:
+      replicas: 3
+    depends_on:
+      - watcher
+  
+  #############################
+  # DEBUG MOUNTEBANK INSTANCES
+  #############################
+  mb-debug:
+    image: bbyars/mountebank
+    # build:
+      # context: ./mountebank-pool
+    command: "--recordRequests --loglevel debug --debug --allowInjection --logfile /mb-debug.log" # --impostersRepository=/app/config/impostersRepo.js"
+    healthcheck: 
+      test: "wget --no-verbose --tries=1 --spider http://localhost:2525 || exit 1"
+      interval: 5s
+      timeout: 10s
+      retries: 6
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+    deploy:
+      replicas: 1
+    depends_on:
+      - watcher
