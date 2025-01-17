@@ -20,5 +20,7 @@
 
 - Benchmarks vs a oob nginx instance
 - Observability
-- Support for HTTPS
+- Support for HTTPS - DONE
 - Support for TCP
+- Distributed Support - Kubernetes poc
+- Log Forwarding

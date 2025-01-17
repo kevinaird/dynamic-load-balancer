@@ -4,11 +4,11 @@ local _M = {}
 
 -- Setup Redis Client
 local redis = require "resty.redis"
-local REDIS_HOST = "redis" -- os.getenv("REDIS_HOST")
-local REDIS_PORT = 6379 -- os.getenv("REDIS_PORT")
+local REDIS_HOST = os.getenv("REDIS_HOST") and os.getenv("REDIS_HOST") or "redis"
+local REDIS_PORT = os.getenv("REDIS_PORT") and tonumber(os.getenv("REDIS_PORT")) or 6379
 local red = redis:new()
 red:set_timeout(1000)
-local redis_connected = false
+-- local redis_connected = false
 
 -- Setup LRU Cache
 local lrucache = require "resty.lrucache"
@@ -29,13 +29,10 @@ function _M.go()
     else
         -- Cache Miss
         -- Connect to Redis
-        if not redis_connected then
-            local ok, err = red:connect(REDIS_HOST, REDIS_PORT)
-            if not ok then
-                ngx.say("Failed to connect to Redis: ", err)
-                return
-            end
-            redis_connected = true
+        local ok, err = red:connect(REDIS_HOST, REDIS_PORT)
+        if not ok then
+            ngx.say("Failed to connect to Redis: ", err)
+            return
         end
 
         -- Redis lookup
@@ -83,6 +80,22 @@ function _M.go()
     local index = indexes[math.random(1, #indexes)]
     local backend = backends[index]
 
+    -- handle direct calls to a specific instance i.e. /!backendname/uri
+    ngx.var.backend_uri = ngx.var.request_uri
+    if string.sub(ngx.var.request_uri,1,2) == "/!" then
+        for instanceName in string.gmatch(ngx.var.request_uri,"([^/]+)") do
+            local instanceName2 = "http://" .. string.sub(instanceName,2,string.len(instanceName))
+            for k, v in pairs(backends) do
+                if string.sub(v,1,string.len(instanceName2)) == instanceName2 then
+                    backend = v
+                    ngx.var.backend_uri = string.sub(ngx.var.request_uri,string.len(instanceName)+2, string.len(ngx.var.request_uri))
+                    break
+                end
+            end
+        break
+        end
+    end
+
     -- Announce dead backends if there is any
     -- local deads = ngx.shared.deads
     -- for i, v in ipairs(deads:get_keys()) do
@@ -99,6 +112,9 @@ function _M.go()
     -- ngx.var.backend_id = index - 1
     -- ngx.var.frontend = frontend
     -- ngx.var.vhost = vhost_name
+    if ngx.var.backend_uri == "" then
+        ngx.var.backend_uri = "/"
+    end
 end
 
 return _M

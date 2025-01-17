@@ -1,0 +1,17 @@
+services:
+  nginx:
+    build:
+      context: ./test/nginx
+    entrypoint: "nginx"
+    command: [ "-c","/nginx.conf","-g","daemon off;"]
+    volumes:
+      - ./test/nginx-baseline.conf:/nginx.conf
+      - ./certs:/conf/certs
+    environment: []
+    ports:
+      - 9000-9009:9000-9009
+      - 2525:2525
+    restart: unless-stopped
+    depends_on:
+      - mb
+      - mb-debug

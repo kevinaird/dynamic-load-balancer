@@ -3,9 +3,10 @@ services:
     image: redis:6.2.3-alpine
     ports:
       - 6379:6379
+    restart: unless-stopped
   redis-commander:
     image: rediscommander/redis-commander:latest
-    restart: always
+    restart: unless-stopped
     environment:
     - REDIS_HOSTS=local:redis:6379
     ports:
@@ -19,23 +20,75 @@ services:
       - ./nginx.conf:/nginx.conf
     ports:
       - 9000-9009:9000-9009
+      - 2525:2525
+    restart: unless-stopped
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
      - redis
-  mb1:
+     - mb
+     - mb-debug
+
+  ####################################################
+  # Mountebank Pool Watcher - Watches docker events and updates redis when 
+  # mb instances are dropped or added
+  watcher:
+    build:
+      context: ./watcher
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+  
+  ###################################
+  # PERFORMANCE MOUNTEBANK INSTANCES
+  ###################################
+  mb:
     image: bbyars/mountebank
-    ports:
-      - 2525:2525
-    command: "--allowInjection"
-  mb2:
+    # build:
+      # context: ./mountebank-pool
+    command: "--no-mock --no-recordRequests --loglevel silent --nologfile --allowInjection" # --impostersRepository=/app/config/impostersRepo.js"
+    healthcheck: 
+      test: "wget --no-verbose --tries=1 --spider http://localhost:2525 || exit 1"
+      interval: 5s
+      timeout: 10s
+      retries: 6
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+    deploy:
+      replicas: 3
+    depends_on:
+      - watcher
+  
+  #############################
+  # DEBUG MOUNTEBANK INSTANCES
+  #############################
+  mb-debug:
     image: bbyars/mountebank
-    ports:
-      - 2526:2525
-    command: "--allowInjection"
-  mb3:
-    image: bbyars/mountebank
-    ports:
-      - 2527:2525
-    command: "--allowInjection"
+    # build:
+      # context: ./mountebank-pool
+    command: "--recordRequests --loglevel debug --debug --allowInjection --logfile /mb-debug.log" # --impostersRepository=/app/config/impostersRepo.js"
+    healthcheck: 
+      test: "wget --no-verbose --tries=1 --spider http://localhost:2525 || exit 1"
+      interval: 5s
+      timeout: 10s
+      retries: 6
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+    deploy:
+      replicas: 1
+    depends_on:
+      - watcher
+
