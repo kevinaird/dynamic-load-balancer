@@ -54,8 +54,23 @@ async function dropMountebankInstance(containerName) {
     }
 }
 
+async function getMountebankInstances() {
+    let instances = await redis.lrange("mountebank_pool",0,-1);
+
+    let attempts = 0;
+    while (instances.length==0 && attempts<3) {
+        await new Promise(cb => setTimeout(cb, 3000));
+        instances = await redis.lrange("mountebank_pool",0,-1);
+        attempts++;
+    }
+    
+    return instances;
+}
+
 module.exports = {
+    redis,
     healthCheck,
     addMountebankInstance,
     dropMountebankInstance,
+    getMountebankInstances,
 };

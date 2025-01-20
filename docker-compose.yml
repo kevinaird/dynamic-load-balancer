@@ -19,12 +19,18 @@ services:
     volumes:
       - ./nginx.conf:/nginx.conf
     ports:
-      - 9000-9009:9000-9009
+      - 9000:9000
       - 2525:2525
     restart: unless-stopped
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+    healthcheck:
+      test: "curl http://localhost:2525/nginx_status"
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
      - redis
      - mb

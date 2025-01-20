@@ -1,19 +1,57 @@
 services:
+  #############################
+  # Test Configuration Setup Containers
+  #############################
+  nginx-conf:
+    build: 
+      context: ../watcher
+    volumes:
+      - ../test:/test
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    command: "node nginx.js /test/nginx-baseline.conf"
+  mb-conf:
+    build: 
+      context: ../watcher
+    volumes:
+      - ../test:/test
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - REDIS_HOST=
+      - MASTER_NGINX=http://nginx
+    privileged: true
+    command: "node deploy.js ../test/imposters.json 10 virtual"
+    depends_on:
+      - nginx
+
+  #############################
+  # Static Load Balancer - (aka Component Under Test)
+  #############################
   nginx:
     image: nginx:latest
     entrypoint: "nginx"
     command: [ "-c","/nginx.conf","-g","daemon off;"]
     volumes:
-      - ./test/nginx-baseline.conf:/nginx.conf
-      - ./certs:/conf/certs
+      - ../test/nginx-baseline.conf:/nginx.conf
+      - ../certs:/conf/certs
     environment: []
     ports:
       - 9000-9009:9000-9009
       - 2525:2525
     restart: unless-stopped
+    healthcheck:
+      test: "curl http://localhost:2525/nginx_status"
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
-      - mb
-      - mb-debug
+      mb:
+        condition: service_healthy
+      mb-debug:
+        condition: service_healthy
+      nginx-conf:
+        condition: service_completed_successfully
 
   ###################################
   # PERFORMANCE MOUNTEBANK INSTANCES
@@ -34,7 +72,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
     deploy:
-      replicas: 3
+      replicas: 10
   
   #############################
   # DEBUG MOUNTEBANK INSTANCES

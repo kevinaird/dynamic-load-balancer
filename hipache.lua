@@ -6,8 +6,6 @@ local _M = {}
 local redis = require "resty.redis"
 local REDIS_HOST = os.getenv("REDIS_HOST") and os.getenv("REDIS_HOST") or "redis"
 local REDIS_PORT = os.getenv("REDIS_PORT") and tonumber(os.getenv("REDIS_PORT")) or 6379
-local red = redis:new()
-red:set_timeout(1000)
 -- local redis_connected = false
 
 -- Setup LRU Cache
@@ -26,9 +24,13 @@ function _M.go()
     local cached_backends = c:get(ngx.var.server_port)
     if cached_backends then 
         backends = cached_backends
+        -- ngx.log(ngx.ERR,"CACHE HIT!")
     else
+        -- ngx.log(ngx.ERR,"CACHE MISS!")
         -- Cache Miss
         -- Connect to Redis
+        local red = redis:new()
+        red:set_timeout(1000)
         local ok, err = red:connect(REDIS_HOST, REDIS_PORT)
         if not ok then
             ngx.say("Failed to connect to Redis: ", err)
@@ -63,6 +65,9 @@ function _M.go()
         --     deads = {}
         -- end
     
+        -- Set the connection pool (to avoid connect/close everytime)
+        red:set_keepalive(0, 100)
+        
     end
 
     -- Pickup a random backend (after removing the dead ones)
@@ -102,9 +107,6 @@ function _M.go()
     --     red:publish("dead", deads:get(v))
     --     deads:delete(v)
     -- end
-
-    -- Set the connection pool (to avoid connect/close everytime)
-    red:set_keepalive(0, 100)
 
     -- Export variables
     ngx.var.backend = backend

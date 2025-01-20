@@ -33,7 +33,17 @@ async function checkContainer(container) {
     return { containerName, details };
 }
 
+async function listContainerNames(re) {
+    const containers = await docker.listContainers({ all: true });
+    return containers.reduce((out,c) => {
+        const names = c.Names.map(n => n.replace(/^\//, ""));
+        return [...out, ...names];
+    },[])
+    .filter(name => re ? re.test(name) : true );
+}
+
 module.exports = {
     findContainer,
     checkContainer,
+    listContainerNames,
 }

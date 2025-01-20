@@ -32,11 +32,8 @@ jobs:
           compose-flags: "-p dynamic-load-balancer"
           up-flags: "--wait -d"
 
-      - name: Deploy mountebank config
-        run: |
-          docker run --network host -v ${{env.HOME}}:/app --rm alpine/curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-1/imposters -d @/app/test/imposters.json
-          docker run --network host -v ${{env.HOME}}:/app --rm alpine/curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-2/imposters -d @/app/test/imposters.json
-          docker run --network host -v ${{env.HOME}}:/app --rm alpine/curl -vX POST http://localhost:2525/dynamic-load-balancer-mb-3/imposters -d @/app/test/imposters.json
+      - name: Confirm sim is reachable
+        run: curl -v http://localhost:9000/customers/1230
       
       - name: Run K6 Benchmark for Test 1 @ 25 vus
         uses: addnab/docker-run-action@v3
@@ -121,9 +118,6 @@ jobs:
       #     cat${{ env.HOME }}/output/metrics.out
       #     echo "" >${{ env.HOME }}/output/metrics.out
 
-      - name: Stop Mountebank
-        run: docker rm -f mb
-
   test2:
     name: Test 2 - Dynamic Load Balancer
     runs-on: ubuntu-latest
@@ -146,14 +140,11 @@ jobs:
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
           compose-file: "./docker-compose.yml"
-          compose-flags: "-p dynamic-load-balancer"
+          compose-flags: "-p dynamic-load-balancer -f ./test/docker-compose-test.yml"
           up-flags: "--wait --build -d"
 
-      - name: Deploy mountebank config
-        run: |
-          docker run --network host -v ${{env.HOME}}:/app --rm alpine/curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-1/imposters -d @/app/test/imposters.json
-          docker run --network host -v ${{env.HOME}}:/app --rm alpine/curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-2/imposters -d @/app/test/imposters.json
-          docker run --network host -v ${{env.HOME}}:/app --rm alpine/curl -vX POST http://localhost:2525/!dynamic-load-balancer-mb-3/imposters -d @/app/test/imposters.json
+      - name: Confirm sim is reachable
+        run: curl -v http://localhost:9000/customers/1230
       
       - name: Run K6 Benchmark for Test 2 @ 25 vus
         uses: addnab/docker-run-action@v3
@@ -232,10 +223,6 @@ jobs:
           options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
           run: k6 run --vus 500 --duration 1m /script.js
 
-      - name: Print Telegraf metrics for Test 2
-        run: |
-          ls${{ env.HOME }}/output/*
-          cat${{ env.HOME }}/output/metrics.out
 
 
       
