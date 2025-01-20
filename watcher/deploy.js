@@ -15,5 +15,8 @@ const { deployServiceFromFile } = require("./lib/deployer");
         { capacity: parseInt(""+capacity), mode },
     );
 })()
-.then(() => console.log("Deployment complete!"))
+.then(() => {
+    console.log("Deployment complete!");
+    process.exit(0);
+})
 .catch(err => console.error("Error occurred during deployment",err.message));
