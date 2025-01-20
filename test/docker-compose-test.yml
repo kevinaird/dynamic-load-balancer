@@ -19,8 +19,3 @@ services:
         condition: service_healthy
       nginx:
         condition: service_healthy
-  
-  mb:
-    deploy:
-      replicas: 10
-  
