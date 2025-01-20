@@ -32,6 +32,9 @@ jobs:
           compose-flags: "-p dynamic-load-balancer"
           up-flags: "--wait -d"
 
+      - name: Wait for mb configuration to deploy
+        run: docker logs -f dynamic-load-balancer-mb-conf-1 
+
       - name: Confirm sim is reachable
         run: curl -v http://localhost:9000/customers/1230
       
@@ -142,6 +145,9 @@ jobs:
           compose-file: "./docker-compose.yml"
           compose-flags: "-p dynamic-load-balancer -f ./test/docker-compose-test.yml"
           up-flags: "--wait --build -d"
+
+      - name: Wait for mb configuration to deploy
+        run: docker logs -f dynamic-load-balancer-mb-conf-1 
 
       - name: Confirm sim is reachable
         run: curl -v http://localhost:9000/customers/1230

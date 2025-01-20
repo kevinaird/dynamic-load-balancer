@@ -4,7 +4,7 @@ services:
   #############################
   mb-conf:
     build: 
-      context: ./watcher
+      context: ../watcher
     volumes:
       - ./test:/test
       - /var/run/docker.sock:/var/run/docker.sock
