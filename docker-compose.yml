@@ -17,7 +17,7 @@ services:
     build:
       context: ./nginx-hipache
     volumes:
-      - ./nginx.conf:/nginx.conf
+      - ./nginx-hipache/nginx.conf:/nginx.conf
     ports:
       - 9000:9000
       - 2525:2525
