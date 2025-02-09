@@ -13,11 +13,10 @@ services:
     - "8081:8081"
     depends_on:
      - redis
-  nginx:
+  
+  go-hipache:
     build:
-      context: ./nginx-hipache
-    volumes:
-      - ./nginx.conf:/nginx.conf
+      context: ./go-hipache
     ports:
       - 9000:9000
       - 2525:2525
@@ -25,8 +24,9 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - PORT_RANGE=2525,9000-9010
     healthcheck:
-      test: "curl http://localhost:2525/nginx_status"
+      test: "curl http://localhost:2525/!metrics"
       interval: 5s
       timeout: 5s
       retries: 5
