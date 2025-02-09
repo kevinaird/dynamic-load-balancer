@@ -33,7 +33,7 @@ services:
     command: [ "-c","/nginx.conf","-g","daemon off;"]
     volumes:
       - ../test/nginx-baseline.conf:/nginx.conf
-      - ../certs:/conf/certs
+      - ../nginx-hipache/certs:/conf/certs
     environment: []
     ports:
       - 9000-9009:9000-9009

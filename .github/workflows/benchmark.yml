@@ -250,7 +250,7 @@ jobs:
         # run: docker-compose -f${{ env.HOME }}/docker-compose.yml up --build -d
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
-          # compose-file: "./docker-compose.yml"
+          compose-file: "./docker-compose.go-hipache.yml"
           compose-flags: "-p dynamic-load-balancer -f ./docker-compose.go-hipache.yml -f ./test/docker-compose-test2.yml"
           up-flags: "--wait --build -d"
 
