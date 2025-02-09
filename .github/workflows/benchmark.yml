@@ -251,7 +251,7 @@ jobs:
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
           # compose-file: "./docker-compose.yml"
-          compose-flags: "-p dynamic-load-balancer -f ./docker-compose.go-hipache.yml -f ./test/docker-compose-test.yml"
+          compose-flags: "-p dynamic-load-balancer -f ./docker-compose.go-hipache.yml -f ./test/docker-compose-test2.yml"
           up-flags: "--wait --build -d"
 
       - name: Wait for mb configuration to deploy
