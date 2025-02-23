@@ -28,7 +28,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       # - DEBUG=1
-      - CACHE_TTL=-1
+      - CACHE_TTL=60
     healthcheck:
       test: "curl http://localhost:2525/nginx_status"
       interval: 5s

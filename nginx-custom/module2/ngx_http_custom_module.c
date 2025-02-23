@@ -7,13 +7,14 @@
 
 // Define the cache structure
 typedef struct cache_entry_s {
+    ngx_queue_t queue;
     ngx_str_t key;
     time_t timestamp;
     ngx_int_t active;
     ngx_int_t in_use;
     redisReply *reply;
-    struct cache_entry_s *next;
-    struct cache_entry_s *prev;
+    // struct cache_entry_s *next;
+    // struct cache_entry_s *prev;
 } cache_entry_t;
 
 const ngx_int_t CACHE_STATE_DEAD = 0;
@@ -26,17 +27,22 @@ typedef struct {
     ngx_int_t debug_mode;
     ngx_str_t redis_host;
     ngx_int_t redis_port;
+    ngx_slab_pool_t *shpool;
     ngx_int_t cache_ttl;
-    cache_entry_t *cache;
+    ngx_queue_t *cache;
+    // redisContext* context;
 } ngx_http_custom_loc_conf_t;
 
 // Function declarations
 static char* ngx_http_custom(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static void* ngx_http_custom_create_loc_conf(ngx_conf_t *cf);
 static ngx_int_t ngx_http_custom_handler(ngx_http_request_t *r);
-static cache_entry_t* find_cache_entry(cache_entry_t *cache, ngx_str_t *key);
-static cache_entry_t* add_cache_entry(ngx_pool_t *pool, cache_entry_t **cache, ngx_str_t *key, redisReply *reply);
-static void ngx_http_custom_cleanup_cache(ngx_pool_t *pool, cache_entry_t *entry, cache_entry_t **cache);
+static cache_entry_t* find_cache_entry(ngx_slab_pool_t *shpool, ngx_queue_t *cache, ngx_str_t *key);
+static cache_entry_t* add_cache_entry(ngx_slab_pool_t *shpool, ngx_queue_t *cache, ngx_str_t *key, redisReply *reply);
+static ngx_int_t ngx_http_custom_init(ngx_conf_t *cf);
+static ngx_int_t ngx_http_custom_init_zone(ngx_shm_zone_t *shm_zone, void *data);
+static ngx_int_t ngx_http_custom_init_worker(ngx_cycle_t *cycle);
+static void ngx_http_custom_cleanup_cache(ngx_pool_t *pool, cache_entry_t *entry, ngx_queue_t *cache);
 
 // Configuration directives
 static ngx_command_t ngx_http_custom_commands[] = {
@@ -54,7 +60,7 @@ static ngx_command_t ngx_http_custom_commands[] = {
 // Module context
 static ngx_http_module_t ngx_http_custom_module_ctx = {
     NULL,                              /* preconfiguration */
-    NULL,                              /* postconfiguration */
+    ngx_http_custom_init,              /* postconfiguration */
 
     NULL,                              /* create main configuration */
     NULL,                              /* init main configuration */
@@ -74,13 +80,16 @@ ngx_module_t ngx_http_custom_module = {
     NGX_HTTP_MODULE,                   /* module type */
     NULL,                              /* init master */
     NULL,                              /* init module */
-    NULL,                              /* init process */
+    ngx_http_custom_init_worker,       /* init process */
     NULL,                              /* init thread */
     NULL,                              /* exit thread */
     NULL,                              /* exit process */
     NULL,                              /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+// Shared memory zone configuration
+static ngx_shm_zone_t *shm_zone;
 
 // Create location configuration
 static void* ngx_http_custom_create_loc_conf(ngx_conf_t *cf) {
@@ -121,42 +130,190 @@ static void* ngx_http_custom_create_loc_conf(ngx_conf_t *cf) {
         conf->cache_ttl = atoi(CACHE_TTL);
     }
 
-    conf->cache = NULL;
+    // conf->cache = NULL;
+
+    // char redis_host[conf->redis_host.len+1];
+    // memcpy(redis_host,conf->redis_host.data,conf->redis_host.len);
+    // redis_host[conf->redis_host.len] = '\0';
+
+    // conf->context = redisConnect(redis_host, conf->redis_port);
+    // if (conf->context == NULL || conf->context->err) {
+    //     if (conf->context) redisFree(conf->context);
+    //     return NGX_CONF_ERROR;
+    // }
+
+    // redisEnableKeepAlive(conf->context);
+
+    ngx_str_t name = ngx_string("custom_cache");
+    shm_zone = ngx_shared_memory_add(cf, &name, 1024 * 1024, &ngx_http_custom_module);
+    if (shm_zone == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    shm_zone->init = ngx_http_custom_init_zone;
+    shm_zone->data = conf;
+
+    ngx_slab_pool_t *shpool;
+    shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
+    if (shpool != NULL) conf->shpool = shpool;
 
     return conf;
 }
 
+// Initialize shared memory zone
+static ngx_int_t ngx_http_custom_init(ngx_conf_t *cf) {
+    // ngx_str_t name = ngx_string("custom_cache");
+
+    // ngx_http_custom_loc_conf_t *conf;
+    // conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_custom_module);
+
+    // shm_zone = ngx_shared_memory_add(cf, &name, 1024 * 1024, &ngx_http_custom_module);
+    // if (shm_zone == NULL) {
+    //     return NGX_ERROR;
+    // }
+
+    // shm_zone->init = ngx_http_custom_init_zone;
+    // shm_zone->data = conf;
+
+    // ngx_slab_pool_t *shpool;
+    // shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
+    // if (shpool != NULL) conf->shpool = shpool;
+
+    return NGX_OK;
+}
+
+// Initialize shared memory zone
+static ngx_int_t ngx_http_custom_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
+    ngx_slab_pool_t *shpool;
+    ngx_http_custom_loc_conf_t *conf;
+
+    if (shm_zone == NULL) {
+        return NGX_ERROR;
+    }
+
+    if (shm_zone->data == NULL) {
+        ngx_log_error(NGX_LOG_ERR, shm_zone->shm.log, 0, "shm_zone->data is null");
+        return NGX_ERROR;
+    }
+
+    conf = shm_zone->data;
+
+    if (shm_zone->shm.addr == NULL) {
+        ngx_log_error(NGX_LOG_ERR, shm_zone->shm.log, 0, "shm_zone->shm.addr is null");
+        return NGX_ERROR;
+    }
+
+    shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
+    if (shpool != NULL) conf->shpool = shpool;
+
+    if (data) {
+         /* reusing a shared zone from old cycle */
+        ngx_http_custom_loc_conf_t *conf2 = (ngx_http_custom_loc_conf_t *) data;
+        if (conf2->cache != NULL) conf->cache = conf2->cache;
+        if (conf2->shpool != NULL) conf->shpool = conf2->shpool;
+        ngx_log_error(NGX_LOG_ERR, shm_zone->shm.log, 0, "reuse shared zone: shpool is set? %d", conf->shpool!=NULL);
+        return NGX_OK;
+    }
+
+    if (shpool == NULL) {
+        ngx_log_error(NGX_LOG_ERR, shm_zone->shm.log, 0, "shpool is null");
+        return NGX_ERROR;
+    }
+
+    if (shm_zone->shm.exists) {
+        /* initialize shared zone context in Windows nginx worker */
+        conf->cache = (ngx_queue_t*) shpool->data;
+        return NGX_OK;
+    }
+
+    if (shpool->data == NULL) {
+        /* initialize shared zone */
+        shpool->data = ngx_slab_alloc(shpool, sizeof(ngx_queue_t));
+        if (shpool->data == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_queue_init((ngx_queue_t*) shpool->data);
+    }
+
+    conf->cache = (ngx_queue_t*) shpool->data;
+
+    return NGX_OK;
+}
+
+// Initialize worker
+static ngx_int_t ngx_http_custom_init_worker(ngx_cycle_t *cycle) {
+    // ngx_http_custom_loc_conf_t *conf = ngx_http_cycle_get_module_loc_conf(cycle, ngx_http_custom_module);
+    // if (conf == NULL) {
+    //     return NGX_ERROR;
+    // }
+
+    return NGX_OK;
+}
+
+static int get_cache_size(ngx_slab_pool_t *shpool, ngx_queue_t *cache) {
+    if (shpool == NULL || cache == NULL) {
+        return -1;
+    }
+
+    int size = 0;
+    ngx_queue_t *q;
+    for (q = ngx_queue_head(cache); q != ngx_queue_sentinel(cache); q = ngx_queue_next(q)) {
+        size++;
+    }
+    return size;
+}
 
 // Find a cache entry
-static cache_entry_t* find_cache_entry(cache_entry_t *cache, ngx_str_t *key) {
-    if (cache == NULL || key == NULL) {
+static cache_entry_t* find_cache_entry(ngx_slab_pool_t *shpool, ngx_queue_t *cache, ngx_str_t *key) {
+    if (shpool == NULL || cache == NULL || key == NULL) {
         return NULL;
     }
 
-    cache_entry_t *entry = cache;
-    while (entry) {
-        if ( entry &&
+    cache_entry_t *entry;
+    ngx_queue_t *q;
+    for (q = ngx_queue_head(cache); q != ngx_queue_sentinel(cache); q = ngx_queue_next(q)) {
+        entry = ngx_queue_data(q, cache_entry_t, queue);
+        if (entry &&
             entry->active == CACHE_STATE_ACTIVE &&
             entry->key.len == key->len && 
-            entry->key.data != NULL &&
-            ngx_strncmp(entry->key.data, key->data, key->len) == 0
+            ngx_strncmp(entry->key.data, key->data, key->len) == 0 &&
+            entry->reply != NULL &&
+            entry->reply->elements > 0 &&
+            entry->reply->element != NULL &&
+            entry->reply->type == REDIS_REPLY_ARRAY
         ) {
             return entry;
         }
-        entry = entry->next;
     }
+
+    // cache_entry_t *entry = cache;
+    // while (entry) {
+    //     if ( entry &&
+    //         entry->active == CACHE_STATE_ACTIVE &&
+    //         entry->key.len == key->len && 
+    //         entry->key.data != NULL &&
+    //         ngx_strncmp(entry->key.data, key->data, key->len) == 0
+    //     ) {
+    //         return entry;
+    //     }
+    //     entry = entry->next;
+    // }
     return NULL;
 }
 
 // Add a cache entry
-static cache_entry_t* add_cache_entry(ngx_pool_t *pool, cache_entry_t **cache, ngx_str_t *key, redisReply *reply) {
-    cache_entry_t *new_entry = ngx_palloc(pool, sizeof(cache_entry_t));
+static cache_entry_t* add_cache_entry(ngx_slab_pool_t *shpool, ngx_queue_t *cache, ngx_str_t *key, redisReply *reply) {
+    if (shpool == NULL || cache == NULL || key == NULL || reply == NULL) {
+        return NULL;
+    }
+
+    cache_entry_t *new_entry = ngx_slab_alloc(shpool, sizeof(cache_entry_t));
     if (new_entry == NULL) {
         return NULL;
     }
 
     new_entry->key.len = key->len;
-    new_entry->key.data = ngx_palloc(pool, key->len);
+    new_entry->key.data = ngx_slab_alloc(shpool, key->len);
     if (new_entry->key.data == NULL) {
         return NULL;
     }
@@ -164,15 +321,16 @@ static cache_entry_t* add_cache_entry(ngx_pool_t *pool, cache_entry_t **cache, n
 
     new_entry->timestamp = time(NULL);
     new_entry->reply = reply;
-    new_entry->next = *cache;
-    new_entry->prev = NULL;
+    // new_entry->next = *cache;
+    // new_entry->prev = NULL;
     new_entry->active = CACHE_STATE_ACTIVE;
     new_entry->in_use = 0;
 
-    if(new_entry->next != NULL) 
-        new_entry->next->prev = new_entry;
+    // if(new_entry->next != NULL) 
+    //     new_entry->next->prev = new_entry;
 
-    *cache = new_entry;
+    // *cache = new_entry;
+    ngx_queue_insert_head(cache, &new_entry->queue);
 
     return new_entry;
 }
@@ -184,24 +342,26 @@ static void ngx_http_custom_free_cache_entry(void *data) {
 }
 
 // Cleanup cache entry
-static void ngx_http_custom_cleanup_cache(ngx_pool_t *pool, cache_entry_t *entry, cache_entry_t **cache) {
+static void ngx_http_custom_cleanup_cache(ngx_pool_t *pool, cache_entry_t *entry, ngx_queue_t *cache) {
     if (entry->in_use > 0) return;
     
     if (entry->active != CACHE_STATE_READYTOCLEAN) return;
     entry->active = CACHE_STATE_CLEANINPROG;
 
-    if (entry->next) {
-        if (entry->prev) entry->next->prev = entry->prev;
-        else entry->next->prev = NULL;
-    }
-    if (entry->prev) {
-        if (entry->next) entry->prev->next = entry->next;
-        else entry->prev->next = NULL;
-    }
-    if (*cache == entry) {
-        if (entry->next) *cache = entry->next;
-        else *cache = NULL;
-    }
+    ngx_queue_remove(&entry->queue);
+
+    // if (entry->next) {
+    //     if (entry->prev) entry->next->prev = entry->prev;
+    //     else entry->next->prev = NULL;
+    // }
+    // if (entry->prev) {
+    //     if (entry->next) entry->prev->next = entry->next;
+    //     else entry->prev->next = NULL;
+    // }
+    // if (*cache == entry) {
+    //     if (entry->next) *cache = entry->next;
+    //     else *cache = NULL;
+    // }
     
     entry->active = CACHE_STATE_DEAD;
 
@@ -254,11 +414,12 @@ static ngx_int_t ngx_http_custom_handler(ngx_http_request_t *r) {
     if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "key=%V", &key);
 
     // Check the cache
-    cache_entry_t *cache_entry = find_cache_entry(conf->cache, &key);
+    if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "cache size=%d", get_cache_size(conf->shpool,conf->cache) );
+    cache_entry_t *cache_entry = find_cache_entry(conf->shpool, conf->cache, &key);
     time_t now = time(NULL);
 
     redisReply *reply;
-    redisContext *c = NULL;
+    redisContext *c = NULL; // conf->context; 
 
     if (cache_entry != NULL && (now - cache_entry->timestamp) < conf->cache_ttl) {
         if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "CACHE HIT");
@@ -273,16 +434,16 @@ static ngx_int_t ngx_http_custom_handler(ngx_http_request_t *r) {
             if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Clean expired cache entry. in use=%d", cache_entry->in_use);
             cache_entry->active = CACHE_STATE_READYTOCLEAN;
 
-            ngx_http_custom_cleanup_cache(r->pool, cache_entry,  &conf->cache);    // Register the cleanup function
+            ngx_http_custom_cleanup_cache(r->pool, cache_entry,  conf->cache);    // Register the cleanup function
         }
 
         if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Connect to Redis");
         // Connect to Redis
-        // redisContext *c = redisConnect("127.0.0.1", 6379);
+
         char redis_host[conf->redis_host.len+1];
-        // sprintf(redis_host,"%s", conf->redis_host.data);
         memcpy(redis_host,conf->redis_host.data,conf->redis_host.len);
         redis_host[conf->redis_host.len] = '\0';
+
         if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "redis_host=%s",redis_host);
         if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "redis_port=%d",conf->redis_port);
         
@@ -319,11 +480,21 @@ static ngx_int_t ngx_http_custom_handler(ngx_http_request_t *r) {
         // Save the response in the cache
         if (conf->cache_ttl != -1) {
             if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Save the response in the cache");
-            cache_entry = add_cache_entry(r->pool, &conf->cache, &key, reply);
+            
+            if (conf->shpool == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "conf->shpool is null");
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+
+            if (conf->cache == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "conf->cache is null");
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+
+            cache_entry = add_cache_entry(conf->shpool, conf->cache, &key, reply);
             if (cache_entry != NULL) cache_entry->in_use++;
         }
 
-        if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Freeing redis connection...");
     }
 
     // Select a random backend
@@ -344,7 +515,11 @@ static ngx_int_t ngx_http_custom_handler(ngx_http_request_t *r) {
     ngx_snprintf(backend_url.data, backend_url.len, "/%s%V", backend, &r->uri);
 
     if (cache_entry != NULL) cache_entry->in_use--;
-    if (c != NULL) redisFree(c);
+    
+    if (c != NULL) {
+        if (conf->debug_mode==1) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Freeing redis connection...");
+        redisFree(c);
+    }
 
     return ngx_http_internal_redirect(r, &backend_url, &r->args);
 
