@@ -17,8 +17,12 @@ services:
     build:
       context: ./nginx-custom
       args:
-        NGINX_VERSION: "1.25.2"
+        NGINX_VERSION: "1.27.2"
+    # image: nginx:latest
+    entrypoint: "nginx"
+    command: [ "-c","/nginx.conf","-g","daemon off;"]
     volumes:
+      # - ./nginx-custom/module2/nginx-debug.conf:/nginx.conf
       - ./nginx-custom/module2/nginx.conf:/nginx.conf
     ports:
       - 9000:9000

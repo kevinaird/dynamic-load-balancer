@@ -1,1 +1,4 @@
 node_modules
+nginx-1.*
+test/nginx-baseline.conf
+*.log
