@@ -445,6 +445,114 @@ jobs:
           options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
           run: k6 run --vus 1100 --duration 1m /script.js
 
+  test5:
+    name: Test 5 - Go-Lang with Pub/Sub
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      
+      - name: Status Check
+        run: |
+          pwd
+          ls
+          cat /proc/cpuinfo
+          cat /proc/meminfo
+          
+      - name: Start up stack
+        # run: docker-compose -f${{ env.HOME }}/docker-compose.yml up --build -d
+        uses: hoverkraft-tech/compose-action@v2.0.2
+        with:
+          compose-file: "./docker-compose.go-proxy.yml"
+          compose-flags: "-p dynamic-load-balancer -f ./docker-compose.go-proxy.yml -f ./test/docker-compose-test5.yml"
+          up-flags: "--wait --build -d"
+
+      - name: Wait for mb configuration to deploy
+        run: docker logs -f dynamic-load-balancer-mb-conf-1 
+
+      - name: Confirm sim is reachable
+        run: curl -v http://localhost:9000/customers/1230
+      
+      - name: Run K6 Benchmark for Test 2 @ 100 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 100 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 200 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 200 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 300 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 300 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 400 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 400 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 500 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 500 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 600 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 600 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 700 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 700 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 800 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 800 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 900 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 900 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 1000 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 1000 --duration 1m /script.js
+
+      - name: Run K6 Benchmark for Test 2 @ 1100 vus
+        uses: addnab/docker-run-action@v3
+        with:
+          image: grafana/k6
+          options: --name k6 --rm -v${{ env.HOME }}/test/script.js:/script.js --network host
+          run: k6 run --vus 1100 --duration 1m /script.js
+
 
 
 
