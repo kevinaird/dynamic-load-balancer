@@ -36,6 +36,8 @@ async function addMountebankInstance(containerName) {
         await redis.rpush("mountebank_pool",endpoint);
         await redis.rpush("frontend:2525",endpoint);
 
+        await redis.publish("new_frontend","2525")
+
     } catch(err) {
         console.error("Error adding mountebank instance", containerName, err);
     }

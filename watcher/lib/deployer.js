@@ -48,6 +48,8 @@ async function deployService(conf) {
         console.log(firstFail.reason.response.data);
         throw new Error(firstFail.reason);
     }
+    
+    await redis.publish("new_frontend",`${imposter.port}`);
 }
 
 async function deployImposter(imposter, instance) {
