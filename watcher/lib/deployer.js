@@ -49,7 +49,10 @@ async function deployService(conf) {
         throw new Error(firstFail.reason);
     }
     
-    await redis.publish("new_frontend",`${imposter.port}`);
+    if (process.env.REDIS_HOST) {
+        const { redis } = require("./mountebankPool");
+        await redis.publish("new_frontend",`${imposter.port}`);
+    }
 }
 
 async function deployImposter(imposter, instance) {
