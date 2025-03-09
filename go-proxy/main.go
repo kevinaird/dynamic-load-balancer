@@ -61,15 +61,16 @@ func getClusterMutex(port int) *sync.Mutex {
 }
 
 func MakeCluster(ctx context.Context, port int) (*Cluster, error) {
-	mu := getClusterMutex(port)
-	mu.Lock()
-	defer mu.Unlock()
+	// mu := getClusterMutex(port)
+	// mu.Lock()
+	// defer mu.Unlock()
 	
 	var cluster *Cluster
 
 	if Clusters[port] != nil {
-		cluster = Clusters[port]
 		log.Println("Updating Cluster on port=",port)
+		cluster = Clusters[port]
+		cluster.Teardown()
 	} else {
 		cluster = &Cluster{
 			Port: port,
@@ -92,9 +93,9 @@ func MakeCluster(ctx context.Context, port int) (*Cluster, error) {
 }
 
 func RemoveCluster(ctx context.Context, port int) (error) {
-	mu := getClusterMutex(port)
-	mu.Lock()
-	defer mu.Unlock()
+	// mu := getClusterMutex(port)
+	// mu.Lock()
+	// defer mu.Unlock()
 
 	cluster := Clusters[port]
 	if cluster == nil {
@@ -111,6 +112,8 @@ func RemoveCluster(ctx context.Context, port int) (error) {
 func ListenForNewClusters(wg sync.WaitGroup) {
 	defer wg.Done()
 	ctx := context.Background()
+
+	log.Println("Subscribed to new_frontend...")
 
 	subscriber := rdb.Subscribe(ctx, "new_frontend")
 
@@ -129,9 +132,10 @@ func ListenForNewClusters(wg sync.WaitGroup) {
 			continue
 		}
 
-		MakeCluster(ctx, port)
+		go MakeCluster(ctx, port)
 	}
 
+	log.Println("Unsubscribed from new_frontend...")
 }
 
 func ListenForDownClusters(wg sync.WaitGroup) {
@@ -139,6 +143,7 @@ func ListenForDownClusters(wg sync.WaitGroup) {
 
 	ctx := context.Background()
 
+	log.Println("Subscribed to remove_frontend...")
 	subscriber := rdb.Subscribe(ctx, "remove_frontend")
 
 	for {
@@ -156,8 +161,10 @@ func ListenForDownClusters(wg sync.WaitGroup) {
 			continue
 		}
 
-		RemoveCluster(ctx, port)
+		go RemoveCluster(ctx, port)
 	}
+
+	log.Println("Unsubscribed from remove_frontend...")
 }
 
 

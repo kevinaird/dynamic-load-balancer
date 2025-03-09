@@ -11,7 +11,7 @@ import (
 	"errors"
 	"time"
 	"sync"
-	
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -63,9 +63,9 @@ func (c *Cluster) Refresh() error {
 	backends_count := len(c.Backends)
 	log.Println("Backends for port:",c.Port,"are",c.Backends,"count=",backends_count)
 
-	if c.server != nil {
-		c.Teardown()
-	}
+	// if c.server != nil {
+	// 	c.Teardown()
+	// }
 
 	if backends_count == 0 {
 		return errors.New("No backends")
@@ -113,7 +113,7 @@ func (c *Cluster) Refresh() error {
 	c.server = &http.Server{Addr: portStr, Handler: mux }
 
 	go func() {
-		log.Println("Starting cluster on port", c.Port)
+		log.Println("Cluster listening on port:", c.Port)
 
 		if err := c.server.ListenAndServe(); err != nil {
 			log.Println("Cluster on port", c.Port, "reported error:", err)
