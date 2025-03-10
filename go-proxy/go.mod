@@ -3,6 +3,7 @@ module go-proxy
 go 1.23.4
 
 require (
+	github.com/hashicorp/terraform-plugin-sdk v1.17.2
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.20.5
 	github.com/quantumsheep/range-parser v1.1.0

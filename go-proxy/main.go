@@ -6,7 +6,6 @@ import (
 	"strings"
 	"strconv"
 	"context"
-	"errors"
 	"sync"
 
 	"go-proxy/utils"
@@ -53,62 +52,6 @@ func GetFrontends(ctx context.Context) ([]int, error) {
 	return frontends, nil
 }
 
-func getClusterMutex(port int) *sync.Mutex {
-	if cluster_mu[port] == nil {
-		cluster_mu[port] = &sync.Mutex{}
-	}
-	return cluster_mu[port]
-}
-
-func MakeCluster(ctx context.Context, port int) (*Cluster, error) {
-	// mu := getClusterMutex(port)
-	// mu.Lock()
-	// defer mu.Unlock()
-	
-	var cluster *Cluster
-
-	if Clusters[port] != nil {
-		log.Println("Updating Cluster on port=",port)
-		cluster = Clusters[port]
-		cluster.Teardown()
-	} else {
-		cluster = &Cluster{
-			Port: port,
-		}
-		cluster.SetContext(ctx)
-		cluster.SetRedisClient(rdb)
-		
-		log.Println("New Cluster on port=",port)
-	}
-
-	err := cluster.Refresh()
-	if (err != nil) {
-		return nil, err
-	}
-
-	Clusters[port] = cluster
-	log.Println("Cluster Ready on port=",port)
-
-	return Clusters[port], nil
-}
-
-func RemoveCluster(ctx context.Context, port int) (error) {
-	// mu := getClusterMutex(port)
-	// mu.Lock()
-	// defer mu.Unlock()
-
-	cluster := Clusters[port]
-	if cluster == nil {
-		log.Println("No cluster to remove on port",port)
-		return errors.New("No cluster to remove on port")
-	}
-
-	cluster.Teardown()
-	Clusters[port] = nil
-
-	return nil
-}
-
 func ListenForNewClusters(wg sync.WaitGroup) {
 	defer wg.Done()
 	ctx := context.Background()
@@ -132,7 +75,8 @@ func ListenForNewClusters(wg sync.WaitGroup) {
 			continue
 		}
 
-		go MakeCluster(ctx, port)
+		ClusterMutex(port) // just to make sure a lock exists for this port
+		go MakeCluster(ctx, port, rdb)
 	}
 
 	log.Println("Unsubscribed from new_frontend...")
@@ -171,8 +115,14 @@ func ListenForDownClusters(wg sync.WaitGroup) {
 func main() {
 	ctx := context.Background()
 
-	Clusters = make(map[int]*Cluster)
-	cluster_mu = make(map[int]*sync.Mutex)
+	InitClusters()
+
+	InitProtocolRegistry()
+	RegisterProtocol("http", newHttpProtocol)
+	RegisterProtocol("https", newHttpsProtocol)
+	// RegisterProtocol("tcp", newTcpProtocol)
+	// RegisterProtocol("ws", newWsProtocol)
+	// RegisterProtocol("wss", newWssProtocol)
 
 	// check redis for what clusters should be deployed on startup
 	ports, err := GetFrontends(ctx)
@@ -181,13 +131,14 @@ func main() {
 		panic(err)
 	}
 
+	// deploy clusters to all detected ports
 	for _, port := range ports {
 		if port == -1 {
 			continue
 		}
 
-		getClusterMutex(port)
-		_, err := MakeCluster(ctx, port)
+		ClusterMutex(port) // just to make sure a lock exists for this port
+		_, err := MakeCluster(ctx, port, rdb)
 		if err != nil {
 			log.Println("Error making cluster on port",port,err)
 		}

@@ -2,39 +2,107 @@ package main
 
 import (
 	"fmt"
-    "net/http"
-    "net/http/httputil"
-    "net/url"
-	"math/rand"
 	"log"
 	"context"
+	"encoding/json"
 	"errors"
-	"time"
 	"sync"
 
 	"github.com/redis/go-redis/v9"
 )
 
+type ClusterProtocol interface {
+	StartServer() error
+	ShutdownServer() error
+}
+
+var protocol_registry map[string]func(c *Cluster) ClusterProtocol
+
+func RegisterProtocol(name string, protocolFactory func(c *Cluster) ClusterProtocol) {
+	protocol_registry[name] = protocolFactory
+}
+
+func InitProtocolRegistry() {
+	protocol_registry = make(map[string]func(c *Cluster) ClusterProtocol)
+}
+
 type Cluster struct {
-	Port int
-	Backends []string
-	Protocol string
-	CacheEnabled bool
-	Delay int
+	Port 			int
+	Backends 		[]string
+	Protocol 		string 		`yaml:"protocol"`
+	CacheEnabled 	bool 		`yaml:"cacheEnabled"`
+	Delay 			int 		`yaml:"delay"`
 	
 	context context.Context
 
-	rdb *redis.Client
-	mu sync.Mutex
-	proxy *httputil.ReverseProxy
-	server *http.Server
+	rdb 			*redis.Client
+	mu 				sync.Mutex // prevents parallel refreshes or teardowns
+	protocolImpl 	ClusterProtocol
 }
 
-type ContextKey string
-const BackendContextKey ContextKey = "backend"
+var Clusters map[int]*Cluster // registry of all clusters
+var cluster_mu map[int]*sync.Mutex // for preventing parallel changes to the same port in the Clusters map
 
-var Clusters map[int]*Cluster
-var cluster_mu map[int]*sync.Mutex
+func InitClusters() {
+	Clusters = make(map[int]*Cluster)
+	cluster_mu = make(map[int]*sync.Mutex)
+}
+
+func ClusterMutex(port int) *sync.Mutex {
+	if cluster_mu[port] == nil {
+		cluster_mu[port] = &sync.Mutex{}
+	}
+	return cluster_mu[port]
+}
+
+func MakeCluster(ctx context.Context, port int, rdb *redis.Client) (*Cluster, error) {
+	mu := ClusterMutex(port)
+	mu.Lock()
+	defer mu.Unlock()
+	
+	var cluster *Cluster
+
+	if Clusters[port] != nil {
+		log.Println("Updating Cluster on port=",port)
+		cluster = Clusters[port]
+		cluster.Teardown()
+	} else {
+		cluster = &Cluster{
+			Port: port,
+		}
+		cluster.SetContext(ctx)
+		cluster.SetRedisClient(rdb)
+		
+		log.Println("New Cluster on port=",port)
+	}
+
+	err := cluster.Refresh()
+	if (err != nil) {
+		return nil, err
+	}
+
+	Clusters[port] = cluster
+	log.Println("Cluster Ready on port=",port)
+
+	return Clusters[port], nil
+}
+
+func RemoveCluster(ctx context.Context, port int) (error) {
+	mu := ClusterMutex(port)
+	mu.Lock()
+	defer mu.Unlock()
+
+	cluster := Clusters[port]
+	if cluster == nil {
+		log.Println("No cluster to remove on port",port)
+		return errors.New("No cluster to remove on port")
+	}
+
+	cluster.Teardown()
+	Clusters[port] = nil
+
+	return nil
+}
 
 func (c *Cluster) SetRedisClient(client *redis.Client) {
 	c.rdb = client
@@ -63,83 +131,51 @@ func (c *Cluster) Refresh() error {
 	backends_count := len(c.Backends)
 	log.Println("Backends for port:",c.Port,"are",c.Backends,"count=",backends_count)
 
-	// if c.server != nil {
-	// 	c.Teardown()
-	// }
-
 	if backends_count == 0 {
 		return errors.New("No backends")
 	}
 
-	// TODO - Load Protocol, CacheEnabled and Delay config from redis too
+	// Set defaults
+	c.Protocol = "http"
+	c.Delay = -1
+	c.CacheEnabled = false
+
+	// Load config from redis
+	config_path := fmt.Sprintf("frontend_config:%d",c.Port)
+	log.Println("GET:",config_path)
+	config, err := c.rdb.Get(ctx, config_path).Result()
+	if err == nil {
+		err := json.Unmarshal([]byte(config), c)
+		if err != nil {
+			log.Println("Error parsing configuration for port",c.Port,err)
+		}
+	}
+
+	log.Println("Cluster on port",c.Port,"protocol =",c.Protocol)
+	log.Println("Cluster on port",c.Port,"delay =",c.Delay)
+	log.Println("Cluster on port",c.Port,"cache enabled =",c.CacheEnabled)
 
 	// create or update proxy servers 
-	// TODO - This probably should be abstracted based on protocol type
-
-	c.proxy = &httputil.ReverseProxy{
-		Rewrite: func(r *httputil.ProxyRequest) {
-			backend, ok  := r.In.Context().Value(BackendContextKey).(string)
-			if !ok {
-				return
-			}
-			// backend := c.Backends[rand.Intn(backends_count)]
-			// log.Println("Selected backend", backend)
-
-			target, err := url.Parse(backend)
-			if err != nil {
-				return
-			}
-
-			r.SetURL(target)
-			r.Out.Host = r.In.Host
-		},
+	protocolFactory, ok := protocol_registry[c.Protocol]
+	if !ok || protocolFactory == nil {
+		return errors.New("No protocol found")
 	}
-	
-	request_handler := func(w http.ResponseWriter, req *http.Request) {
-		// c.proxy.ServeHTTP(w, req)
-		backend := c.Backends[rand.Intn(len(c.Backends))]
-		w.Header().Set("X-Backend", backend)
-		
-		ctx := context.WithValue(req.Context(), BackendContextKey, backend)
-		c.proxy.ServeHTTP(w, req.WithContext(ctx))
+
+	c.protocolImpl = protocolFactory(c)
+	if c.protocolImpl == nil {
+		return errors.New("Error setting protocol implementation")
 	}
-	
 
-	mux := http.NewServeMux()
-	// mux.Handle("/!metrics", promhttp.Handler())
-    mux.HandleFunc("/", request_handler)
-
-	portStr := fmt.Sprintf(":%d", c.Port)
-	c.server = &http.Server{Addr: portStr, Handler: mux }
-
-	go func() {
-		log.Println("Cluster listening on port:", c.Port)
-
-		if err := c.server.ListenAndServe(); err != nil {
-			log.Println("Cluster on port", c.Port, "reported error:", err)
-		}
-	}()
-
-	return nil
+	return c.protocolImpl.StartServer()
 }
 
 func (c* Cluster) Teardown() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
-	log.Println("Tearing down on port:", c.Port)
-	
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	
-	if err := c.server.Shutdown(ctx); err != nil {
-		log.Println("Error shutting down existing server on port:", c.Port)
-		return err
+
+	if c.protocolImpl == nil {
+		return errors.New("Teardown attempted on a cluster with no protocol implementation set")
 	}
 
-	log.Println("Torn down on port:", c.Port)
-	c.server = nil
-	c.proxy = nil
-	
-	return nil
+	return c.protocolImpl.ShutdownServer()
 }
