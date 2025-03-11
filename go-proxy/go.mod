@@ -8,6 +8,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/quantumsheep/range-parser v1.1.0
 	github.com/redis/go-redis/v9 v9.7.0
+	github.com/smira/go-statsd v1.3.4
 )
 
 require (

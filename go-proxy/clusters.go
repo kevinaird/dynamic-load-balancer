@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
+
+	"go-proxy/utils"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -29,14 +32,18 @@ func InitProtocolRegistry() {
 type Cluster struct {
 	Port 			int
 	Backends 		[]string
-	Protocol 		string 		`yaml:"protocol"`
-	CacheEnabled 	bool 		`yaml:"cacheEnabled"`
-	Delay 			int 		`yaml:"delay"`
+	Name			string			`yaml:"name"`
+	Protocol 		string 			`yaml:"protocol"`
+	MutualAuth		bool			`yaml:"mutualAuth"`
+	CacheEnabled 	bool 			`yaml:"cacheEnabled"`
+	CacheTTL		utils.Duration	`yaml:"cacheTTL"`
+	Delay 			int 			`yaml:"delay"`
+	StatsdEnabled	bool			`yaml:"statsdEnabled"`
 	
 	context context.Context
 
 	rdb 			*redis.Client
-	mu 				sync.Mutex // prevents parallel refreshes or teardowns
+	mu 				sync.Mutex 	// prevents parallel refreshes or teardowns
 	protocolImpl 	ClusterProtocol
 }
 
@@ -136,9 +143,11 @@ func (c *Cluster) Refresh() error {
 	}
 
 	// Set defaults
+	c.Name = fmt.Sprintf("sim-on-port-%d",c.Port)
 	c.Protocol = "http"
 	c.Delay = -1
 	c.CacheEnabled = false
+	c.CacheTTL = utils.Duration(120 * time.Second)
 
 	// Load config from redis
 	config_path := fmt.Sprintf("frontend_config:%d",c.Port)
@@ -151,9 +160,11 @@ func (c *Cluster) Refresh() error {
 		}
 	}
 
+	log.Println("Cluster on port",c.Port,"name =",c.Name)
 	log.Println("Cluster on port",c.Port,"protocol =",c.Protocol)
 	log.Println("Cluster on port",c.Port,"delay =",c.Delay)
 	log.Println("Cluster on port",c.Port,"cache enabled =",c.CacheEnabled)
+	log.Println("Cluster on port",c.Port,"cache time to live =",time.Duration(c.CacheTTL))
 
 	// create or update proxy servers 
 	protocolFactory, ok := protocol_registry[c.Protocol]

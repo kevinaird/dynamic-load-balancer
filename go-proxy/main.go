@@ -11,6 +11,7 @@ import (
 	"go-proxy/utils"
 	
 	"github.com/redis/go-redis/v9"
+	"github.com/smira/go-statsd"
 )
 
 var rdb *redis.Client = redis.NewClient(&redis.Options{
@@ -18,6 +19,10 @@ var rdb *redis.Client = redis.NewClient(&redis.Options{
 	Password: utils.Config("REDIS_PASS",""),
 	DB:		  utils.Configi("REDIS_DB",0),
 })
+
+var statsd_client *statsd.Client = statsd.NewClient(utils.Config("STATSD_HOSTANDPORT","localhost:8125"),
+    statsd.MaxPacketSize(1400),
+    statsd.MetricPrefix("sv-"))
 
 
 func GetFrontends(ctx context.Context) ([]int, error) {
